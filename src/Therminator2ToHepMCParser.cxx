@@ -38,6 +38,9 @@ void Therminator2ToHepMCParser::Run()
     cout<<"Reading "<<eventsToRead<<" events..."<<endl;
     for(int i=0; i<eventsToRead; i++)
     {
+        if(eidToVertex)
+            delete eidToVertex;
+        eidToVertex = new unordered_map<int, GenVertex*>();
 
         inputStream.open(inputFileName.c_str());
 
@@ -109,18 +112,46 @@ void Therminator2ToHepMCParser::Run()
             fillParticle();
 
             FourVector fourmom(
-                    _particle.px*fm_to_mm,
-                    _particle.py*fm_to_mm, 
-                    _particle.pz*fm_to_mm, 
+                    _particle.px,
+                    _particle.py, 
+                    _particle.pz, 
                     _particle.energy);
-            GenParticle* particle = new GenParticle(fourmom, _particle.pid, 1);
+            GenParticle* particle = new GenParticle(fourmom, _particle.pid, _particle.decayed);
             particle->set_generated_mass(_particle.mass);
 
             // step 5c) connect the particle to its production vertex
             // all particles connect to the original beam vertex. this isn't strictly correct (and
             // ampt actually stores the freezeout vertex of particles), we do need however to have a 
             // 'mother-daughter' relationship for all particles .... 
-              v->add_particle_out(particle);
+            if(_particle.decayed)
+            {
+
+                
+                GenVertex* vert = new GenVertex();
+                vert->add_particle_in(particle);
+                parsed_event.add_vertex(vert);
+                eidToVertex->emplace(_particle.eid, vert);
+            }
+
+            GenVertex* out_vertex = v;
+
+            if(_particle.fathereid != -1)
+                out_vertex = eidToVertex->at(_particle.fathereid);
+            
+            if(out_vertex->position() == FourVector(0,0,0,0) && _particle.fathereid != -1)
+            {
+                FourVector spaceTimePos(
+                            _particle.x*fm_to_mm,
+                            _particle.y*fm_to_mm, 
+                            _particle.z*fm_to_mm, 
+                            _particle.t*fm_to_mm);
+
+                out_vertex->set_position(spaceTimePos);
+            }
+
+            out_vertex->add_particle_out(particle);
+
+
         }
         
         getline(inputStream, currentLine);  //Skip last line of particles

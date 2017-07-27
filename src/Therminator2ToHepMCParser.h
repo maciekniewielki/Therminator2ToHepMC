@@ -5,10 +5,12 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <unordered_map>
 
 //HepMC libraries
 #include "HepMC/GenEvent.h"
 #include "HepMC/IO_GenEvent.h"
+#include "HepMC/GenVertex.h"
 
 class Therminator2ToHepMCParser
 {
@@ -50,6 +52,7 @@ class Therminator2ToHepMCParser
     CurrentParticle _particle;
     int _particlesInEvent;
     HepMC::IO_GenEvent* _HepMC_writer;
+    std::unordered_map<int, HepMC::GenVertex*>* eidToVertex;
     
 };
 
