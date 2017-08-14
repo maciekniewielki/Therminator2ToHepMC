@@ -1,3 +1,7 @@
+//Therminator2ToHepMCParser
+//Written by Maciej Buczynski
+//Inspired by AmptToHepMCParser by Redmer Alexander Bertens
+
 #include "Therminator2ToHepMCParser.h"
 #include <cstdio>
 #include <iostream>

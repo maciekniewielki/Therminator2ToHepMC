@@ -27,14 +27,6 @@ void Therminator2ToHepMCParser::Run()
 
     int events = 0;
     
-    /*while(true)
-    {
-        //inputStream>>currentLine;
-        getline(inputStream, currentLine);
-        if(currentLine.length()>0)
-            cout<<currentLine<<endl;
-    }*/
-    
     cout<<"Reading "<<eventsToRead<<" events..."<<endl;
     for(int i=0; i<eventsToRead; i++)
     {
@@ -51,11 +43,9 @@ void Therminator2ToHepMCParser::Run()
         }
 
         getline(inputStream, currentLine);  //Skip first line of event header
-        //cout<<"First line: "<<currentLine<<endl;
 
         inputStream>>temp>>_particlesInEvent;   //Get number of particles
         getline(inputStream, currentLine);  //Skip the rest of the line
-        //cout<<"Rest of line: "<<currentLine<<endl;
         
         cout<<"Event "<<events<<": Number of particles in event: "<<_particlesInEvent<<endl;
 
@@ -64,9 +54,8 @@ void Therminator2ToHepMCParser::Run()
         
         parsed_event.weights().push_back(1.);
 
-        // step 3) - add heavy ion information
-        HeavyIon heavyion(  // add the information to the heavy-ion header. for fields that are
-                            // not available in ampt, we provide -1, which is obviously nonsensical
+        // Add Heavy Ion information. I don't know if this is required
+        HeavyIon heavyion(
             -1,                                     // Number of hard scatterings
             -1,                                     // Number of projectile participants
             -1,                                     // Number of target participants
@@ -89,8 +78,6 @@ void Therminator2ToHepMCParser::Run()
         // step 4) add two `artificial' beam particles. the hepmc reader in aliroot expects two beam particles
         // (which in hepmc have a special status) ,so we need to create them. they will not 
         // end up in the analysis, as they have only longitudinal momentum. 
-        // the particles are produced at 0,0,0, the same production vertex that we'll later use for all
-        // final state particles as well
         GenVertex* v = new GenVertex();
         parsed_event.add_vertex(v);
 
@@ -107,6 +94,9 @@ void Therminator2ToHepMCParser::Run()
         // hepmc does not seem to provide for more than 1 beam particle ...
         parsed_event.set_beam_particles(bp1,bp2);
 
+        
+
+        bool first = true;
         for(int i=0; i<_particlesInEvent; i++)
         {
             fillParticle();
@@ -116,29 +106,35 @@ void Therminator2ToHepMCParser::Run()
                     _particle.py, 
                     _particle.pz, 
                     _particle.energy);
-            GenParticle* particle = new GenParticle(fourmom, _particle.pid, _particle.decayed);
+            GenParticle* particle = new GenParticle(fourmom, _particle.pid, _particle.decayed+1);
             particle->set_generated_mass(_particle.mass);
 
-            // step 5c) connect the particle to its production vertex
-            // all particles connect to the original beam vertex. this isn't strictly correct (and
-            // ampt actually stores the freezeout vertex of particles), we do need however to have a 
-            // 'mother-daughter' relationship for all particles .... 
-            if(_particle.decayed)
-            {
+            GenVertex* out_vertex;
 
-                
-                GenVertex* vert = new GenVertex();
-                vert->add_particle_in(particle);
-                parsed_event.add_vertex(vert);
-                eidToVertex->emplace(_particle.eid, vert);
-            }
-
-            GenVertex* out_vertex = v;
-
+            // Determine the production vertex. If it's not the primordial particle, look it up
             if(_particle.fathereid != -1)
                 out_vertex = eidToVertex->at(_particle.fathereid);
+            else
+            {
+                // If it's a primordial particle, create a pseudo particle for connection
+                // and a production vertex. 
+                FourVector hyperVector(0,0,.14e4, 1686.2977);
+                GenParticle* hypersurface = new GenParticle(hyperVector, 2212, 666); //Custom status code
+                v->add_particle_out(hypersurface);
+
+                out_vertex = new GenVertex();
+                out_vertex->add_particle_in(hypersurface);
+                parsed_event.add_vertex(out_vertex);
+                FourVector spaceTimePos(
+                            _particle.x*fm_to_mm,
+                            _particle.y*fm_to_mm, 
+                            _particle.z*fm_to_mm, 
+                            _particle.t*fm_to_mm);
+                out_vertex->set_position(spaceTimePos);
+            }
             
-            if(out_vertex->position() == FourVector(0,0,0,0) && _particle.fathereid != -1)
+            // If not already done, set the creation position
+            if(out_vertex->position() == FourVector(0,0,0,0))
             {
                 FourVector spaceTimePos(
                             _particle.x*fm_to_mm,
@@ -152,10 +148,18 @@ void Therminator2ToHepMCParser::Run()
             out_vertex->add_particle_out(particle);
 
 
+            // If particle decayed, create a decay vertex and store it for future use
+            if(_particle.decayed)
+            {   
+                GenVertex* vert = new GenVertex();
+                vert->add_particle_in(particle);
+                parsed_event.add_vertex(vert);
+                eidToVertex->emplace(_particle.eid, vert);  // Child particles will use this vertex 
+                                                            // for lookup
+            }
+
         }
-        
-        getline(inputStream, currentLine);  //Skip last line of particles
-        //cout<<"Last particle line: "<<currentLine<<endl;
+ 
         getline(inputStream, currentLine);  //Skip last line of particles
         _HepMC_writer->write_event(&parsed_event);
         events++;
@@ -169,15 +173,6 @@ void Therminator2ToHepMCParser::Run()
 
 bool Therminator2ToHepMCParser::initParser()
 {
-    /*
-    inputStream.open(inputFileName.c_str());
-
-    if(!inputStream.good())
-    {
-        cerr<<"Error, could not open file "<<inputFileName<<endl;
-        return false;
-    }
-    */
 
     _HepMC_writer = new IO_GenEvent(outputFileName);
     if(!_HepMC_writer)
