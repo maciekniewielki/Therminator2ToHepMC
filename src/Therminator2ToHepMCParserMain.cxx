@@ -15,11 +15,12 @@ using std::string;
 void printUsage(char* progName)
 {
     printf("Converts Therminator2 text output file to the HepMC format. Usage:\n");
-    printf("%s <input_file> <output_file> <number_of_events_to_read>\n", progName);
+    printf("%s <input_file> <output_file>\n", progName);
 }
 
 int main(int argc, char* argv[])
 {
+    printf("Therminator2 parser version 2.0\n");
     if(argc < 3)
     {
         printUsage(argv[0]);
@@ -35,9 +36,8 @@ int main(int argc, char* argv[])
     
     string inputFileName = firstArg;
     string outputFileName = argv[2];
-    int eventsToRead = atoi(argv[3]);
 
-    Therminator2ToHepMCParser* parser = new Therminator2ToHepMCParser(inputFileName, outputFileName, eventsToRead);
+    Therminator2ToHepMCParser* parser = new Therminator2ToHepMCParser(inputFileName, outputFileName);
     parser->Run();
     
     return 0;

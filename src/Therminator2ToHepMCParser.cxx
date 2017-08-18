@@ -8,11 +8,10 @@ Therminator2ToHepMCParser::Therminator2ToHepMCParser():_HepMC_writer(0)
     
 }
 
-Therminator2ToHepMCParser::Therminator2ToHepMCParser(string inputFileName, string outputFileName, int eventsToRead):_HepMC_writer(0)
+Therminator2ToHepMCParser::Therminator2ToHepMCParser(string inputFileName, string outputFileName):_HepMC_writer(0)
 {
     this->inputFileName = inputFileName;
     this->outputFileName = outputFileName;
-    this->eventsToRead = eventsToRead;
 }
 
 void Therminator2ToHepMCParser::Run()
@@ -22,39 +21,57 @@ void Therminator2ToHepMCParser::Run()
     if(!initParser())
         return;
 
-    string currentLine;
+    string lineBuffer;
     string temp;
 
     int events = 0;
     
-    cout<<"Reading "<<eventsToRead<<" events..."<<endl;
-    for(int i=0; i<eventsToRead; i++)
+    cout<<"Reading events..."<<endl;
+
+    bool isFifo = true;
+
+    while(true)     //We don't know how many events there are
     {
         if(eidToVertex)
             delete eidToVertex;
         eidToVertex = new unordered_map<int, GenVertex*>();
 
-        inputStream.open(inputFileName.c_str());
-
-        if(!inputStream.good())
+        if(isFifo || events==0)
         {
-            cerr<<"Error, could not open file "<<inputFileName<<endl;
-            return;
+            inputStream.open(inputFileName.c_str());
+            if(!inputStream.good())
+            {
+                cerr<<"Error, could not open file "<<inputFileName<<endl;
+                return;
+            }
         }
 
-        getline(inputStream, currentLine);  //Skip first line of event header
+        getline(inputStream, lineBuffer);      //Skip first line of event header
+        if((events==0 || !isFifo) && !inputStream.good())  //If it's a normal file, check if it's the end
+        {                                   //If it works in fifo mode, the parser will be killed
+            inputStream.close();            //by AliRoot
+            break;
+        }
 
-        inputStream>>temp>>_particlesInEvent;   //Get number of particles
-        getline(inputStream, currentLine);  //Skip the rest of the line
+        if(events==0 && lineBuffer[1] == ' ')  //Check for extra lines
+        {                                      //When Therminator2 opens the file by itself, it adds
+            isFifo=false;                      //two extra lines, so at the beginning of the file there are
+            getline(inputStream, lineBuffer);  //extra lines that we must skip                  
+            getline(inputStream, lineBuffer);                    
+                                            
+        }                                   
         
-        cout<<"Event "<<events<<": Number of particles in event: "<<_particlesInEvent<<endl;
+        inputStream>>temp>>_particlesInEvent;   //Get number of particles
+        getline(inputStream, lineBuffer);       //Skip the rest of the line
+        
+        cout<<"Event "<<events+1<<": Number of particles in event: "<<_particlesInEvent<<endl;
 
 
         GenEvent parsed_event(Units::GEV, Units::MM);
         
         parsed_event.weights().push_back(1.);
 
-        // Add Heavy Ion information. I don't know if this is required
+        // Add Heavy Ion information. This may not be required
         HeavyIon heavyion(
             -1,                                     // Number of hard scatterings
             -1,                                     // Number of projectile participants
@@ -75,7 +92,7 @@ void Therminator2ToHepMCParser::Run()
         parsed_event.set_heavy_ion(heavyion);
         
 
-        // step 4) add two `artificial' beam particles. the hepmc reader in aliroot expects two beam particles
+        // adding two `artificial' beam particles. the hepmc reader in aliroot expects two beam particles
         // (which in hepmc have a special status) ,so we need to create them. they will not 
         // end up in the analysis, as they have only longitudinal momentum. 
         GenVertex* v = new GenVertex();
@@ -96,7 +113,6 @@ void Therminator2ToHepMCParser::Run()
 
         
 
-        bool first = true;
         for(int i=0; i<_particlesInEvent; i++)
         {
             fillParticle();
@@ -117,7 +133,7 @@ void Therminator2ToHepMCParser::Run()
             else
             {
                 // If it's a primordial particle, create a pseudo particle for connection
-                // and a production vertex. 
+                // and its production vertex. 
                 FourVector hyperVector(0,0,.14e4, 1686.2977);
                 GenParticle* hypersurface = new GenParticle(hyperVector, 2212, 666); //Custom status code
                 v->add_particle_out(hypersurface);
@@ -160,11 +176,13 @@ void Therminator2ToHepMCParser::Run()
 
         }
  
-        getline(inputStream, currentLine);  //Skip last line of particles
         _HepMC_writer->write_event(&parsed_event);
         events++;
-        
-        inputStream.close();
+        getline(inputStream, lineBuffer);  //Skip last line of particles
+
+        if(isFifo)
+            inputStream.close();
+
     }
 
     cout<<"End. Events parsed: "<<events<<endl;
