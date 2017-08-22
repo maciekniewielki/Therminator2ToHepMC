@@ -30,7 +30,7 @@ void Therminator2ToHepMCParser::Run()
 
     bool isFifo = true;
 
-    while(true)     //We don't know how many events there are
+    while(true)     //Event loop
     {
         if(eidToVertex)
             delete eidToVertex;
@@ -108,11 +108,10 @@ void Therminator2ToHepMCParser::Run()
         bp2->set_generated_mass(940);
         v->add_particle_in(bp2);
 
-        // hepmc does not seem to provide for more than 1 beam particle ...
         parsed_event.set_beam_particles(bp1,bp2);
-
         
 
+        //Particle Loop
         for(int i=0; i<_particlesInEvent; i++)
         {
             fillParticle();
@@ -134,8 +133,8 @@ void Therminator2ToHepMCParser::Run()
             {
                 // If it's a primordial particle, create a pseudo particle for connection
                 // and its production vertex. 
-                FourVector hyperVector(0,0,.14e4, 1686.2977);
-                GenParticle* hypersurface = new GenParticle(hyperVector, 2212, 666); //Custom status code
+                FourVector hyperVector(0, 0, 0, 0);
+                GenParticle* hypersurface = new GenParticle(hyperVector, 0, 0);
                 v->add_particle_out(hypersurface);
 
                 out_vertex = new GenVertex();
